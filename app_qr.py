@@ -40,16 +40,32 @@ st.markdown("---")
 
 
 def estrai_codici(pdf_bytes: bytes) -> list[str]:
-    """Estrae codici alfanumerici >= 13 caratteri dal PDF."""
+    """
+    Estrae i codici LDV dalla seconda colonna del PDF Runsheet.
+    Regole:
+    - Lunghezza >= 8 caratteri
+    - Deve contenere almeno una cifra (mai solo lettere)
+    - Può essere numerico puro o alfanumerico
+    - Prende il token in posizione 1 (seconda colonna) di ogni riga
+    """
     reader = PdfReader(io.BytesIO(pdf_bytes))
-    found = []
+    found  = []
+
+    # Pattern valido: almeno 8 char, solo A-Z/0-9, con almeno 1 cifra
+    pattern = re.compile(r'^[A-Z0-9]{8,}$')
+
     for page in reader.pages:
         text = page.extract_text() or ""
-        matches = re.findall(r'[A-Z0-9]{13,}', text)
-        for m in matches:
-            clean = m.strip()
-            if clean not in found:
-                found.append(clean)
+        for line in text.splitlines():
+            tokens = line.split()
+            if len(tokens) < 2:
+                continue
+            candidate = tokens[1].strip()  # seconda colonna
+            # Deve matchare il pattern E contenere almeno una cifra
+            if pattern.match(candidate) and re.search(r'\d', candidate):
+                if candidate not in found:
+                    found.append(candidate)
+
     return found
 
 
@@ -108,7 +124,7 @@ if uploaded:
             st.stop()
 
     if not codici:
-        st.warning("⚠️ Nessun codice alfanumerico (≥13 caratteri) trovato nel PDF.")
+        st.warning("⚠️ Nessun codice LDV trovato nel PDF. Verifica che il file sia un Runsheet corretto.")
         st.stop()
 
     # KPI
@@ -120,7 +136,7 @@ if uploaded:
             unsafe_allow_html=True
         )
     with c2:
-        pagine = -(-len(codici) // (3 * 6))  # ceil: 3 col x 6 righe = 18 per pagina
+        pagine = -(-len(codici) // 18)  # ceil: 3 col x 6 righe = 18 per pagina
         st.markdown(
             f'<div class="kpi-box"><p class="kpi-val">{pagine}</p>'
             f'<p class="kpi-lbl">Pagine QR stimate</p></div>',
@@ -129,11 +145,14 @@ if uploaded:
 
     st.markdown("---")
 
-    # Anteprima codici
+    # Anteprima codici in tabella
     with st.expander(f"👁 Anteprima codici estratti ({len(codici)})", expanded=False):
-        cols = st.columns(3)
-        for i, code in enumerate(codici):
-            cols[i % 3].code(code)
+        import pandas as pd
+        df_preview = pd.DataFrame({
+            "#":        range(1, len(codici) + 1),
+            "Codice LDV": codici,
+        })
+        st.dataframe(df_preview, use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
