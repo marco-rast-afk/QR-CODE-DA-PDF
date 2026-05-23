@@ -51,8 +51,8 @@ def estrai_codici(pdf_bytes: bytes) -> list[str]:
     reader = PdfReader(io.BytesIO(pdf_bytes))
     found  = []
 
-    # Pattern valido: almeno 8 char, solo A-Z/0-9, con almeno 1 cifra
-    pattern = re.compile(r'^[A-Z0-9]{8,}$')
+    # Pattern valido: almeno 13 char, solo A-Z/0-9, con almeno 1 cifra
+    pattern = re.compile(r'^[A-Z0-9]{13,}$')
 
     for page in reader.pages:
         text = page.extract_text() or ""
