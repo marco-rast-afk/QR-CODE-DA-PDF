@@ -41,27 +41,54 @@ st.markdown("---")
 
 def estrai_codici(pdf_bytes: bytes) -> list[str]:
     """
-    Estrae i codici LDV dalla seconda colonna del PDF Runsheet.
-    Regole:
-    - Lunghezza >= 8 caratteri
-    - Deve contenere almeno una cifra (mai solo lettere)
-    - Può essere numerico puro o alfanumerico
-    - Prende il token in posizione 1 (seconda colonna) di ogni riga
+    Estrae i codici LDV dalla sezione tabella del Runsheet (es. pagg. 1-3).
+    
+    Struttura righe tabella:
+      [num_stop]  CODICE_LDV  città  cap  indirizzo  priorità
+    oppure righe secondarie (senza num_stop):
+      CODICE_LDV  città  cap  ...
+    
+    Regole codice valido:
+    - Solo caratteri A-Z e 0-9
+    - Lunghezza >= 13
+    - Deve contenere almeno una cifra (esclude parole solo lettere tipo RVE, APP, PCP)
+    - NON deve essere un CAP (5 cifre) né un numero breve
+    
+    Si ferma quando incontra:
+    - "SDA EXPRESS COURIER" (inizio sezione POD)
+    - "LDV:" (schede individuali)
+    - "RIEPILOGO CONSEGNE" (fine tabella giro)
     """
-    reader = PdfReader(io.BytesIO(pdf_bytes))
-    found  = []
-
-    # Pattern valido: almeno 13 char, solo A-Z/0-9, con almeno 1 cifra
+    reader  = PdfReader(io.BytesIO(pdf_bytes))
+    found   = []
     pattern = re.compile(r'^[A-Z0-9]{13,}$')
 
     for page in reader.pages:
         text = page.extract_text() or ""
-        for line in text.splitlines():
-            tokens = line.split()
-            if len(tokens) < 2:
+        lines = text.splitlines()
+
+        for line in lines:
+            # Fermati quando incontra i marcatori di fine tabella
+            stripped = line.strip()
+            if (stripped.startswith("SDA EXPRESS COURIER")
+                    or stripped.startswith("LDV:")
+                    or "RIEPILOGO CONSEGNE" in stripped):
+                break
+
+            tokens = stripped.split()
+            if not tokens:
                 continue
-            candidate = tokens[1].strip()  # seconda colonna
-            # Deve matchare il pattern E contenere almeno una cifra
+
+            # Candidato: se il primo token è un numero (num_stop),
+            # il codice è in posizione 1; altrimenti è in posizione 0
+            if tokens[0].isdigit() and len(tokens) >= 2:
+                candidate = tokens[1]
+            elif not tokens[0].isdigit():
+                candidate = tokens[0]
+            else:
+                continue
+
+            # Validazione: pattern + almeno una cifra
             if pattern.match(candidate) and re.search(r'\d', candidate):
                 if candidate not in found:
                     found.append(candidate)
